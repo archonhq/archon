@@ -64,11 +64,11 @@ def test_ingest_rejects_invalid(client):
     assert store.count() == 0
 
 
-def test_control_no_adapter(client):
+def test_control_no_controller(client):
     base, store = client
     res = _post(base, "/api/control", {"action": "stop", "target": "openclaw:main"})
     assert res["ok"] is False
-    assert "no adapter" in res["detail"]
+    assert "no controller" in res["detail"]
     # control.request + control.result were both stored
     assert store.count() == 2
 
@@ -78,6 +78,27 @@ def test_control_bad_action(client):
     with pytest.raises(urllib.error.HTTPError) as exc:
         _post(base, "/api/control", {"action": "rm-rf", "target": "x"})
     assert exc.value.code == 400
+
+
+def test_control_routes_to_controller():
+    from archon.adapters import CommandAdapter
+
+    store = EventStore()
+    srv = serve(
+        host="127.0.0.1", port=0, store=store, adapters={},
+        controllers={"svc": CommandAdapter({"svc": {"stop": "echo done"}})},
+    )
+    port = srv.server_address[1]
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    base = f"http://127.0.0.1:{port}"
+    try:
+        res = _post(base, "/api/control", {"action": "stop", "target": "svc:main"})
+        assert res["ok"] is True
+        assert "done" in res["detail"]
+    finally:
+        srv.shutdown()
+        srv.server_close()
 
 
 def test_dashboard_served(client):

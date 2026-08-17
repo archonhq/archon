@@ -6,7 +6,7 @@ Routes:
   GET  /api/events/stream      -> SSE live stream of new events
   GET  /api/health             -> {status, events, adapters}
   POST /api/events             -> ingest one validated event
-  POST /api/control            -> {action, target, by} -> routed to matching adapter
+  POST /api/control            -> {action, target, by} -> routed to a controller
 """
 
 from __future__ import annotations
@@ -31,10 +31,11 @@ _DEFAULT_DASHBOARD = (
 
 
 class ArchonHandler(BaseHTTPRequestHandler):
-    """Handler bound to a store + adapters + broadcaster + dashboard bytes."""
+    """Handler bound to store + adapters + controllers + broadcaster + dashboard."""
 
     store: EventStore
     adapters: dict[str, Any]
+    controllers: dict[str, Any]
     broadcaster: Broadcaster
     dashboard: bytes
 
@@ -72,6 +73,7 @@ class ArchonHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "events": self.store.count(),
                 "adapters": sorted(self.adapters),
+                "controllers": sorted(self.controllers),
             })
         else:
             self._json({"error": "not found"}, 404)
@@ -104,10 +106,10 @@ class ArchonHandler(BaseHTTPRequestHandler):
         if action not in CONTROL_ACTIONS:
             return self._json({"error": f"unsupported action: {action}"}, 400)
 
-        adapter = self.adapters.get(str(target).split(":", 1)[0])
+        adapter = self.controllers.get(str(target).split(":", 1)[0])
 
         if adapter is None:
-            result = {"ok": False, "detail": f"no adapter for {str(target).split(':', 1)[0]!r}"}
+            result = {"ok": False, "detail": f"no controller for {str(target).split(':', 1)[0]!r}"}
         else:
             result = adapter.control(action, target)
 
@@ -147,6 +149,7 @@ class ArchonHandler(BaseHTTPRequestHandler):
 def make_handler(
     store: EventStore,
     adapters: dict[str, Any],
+    controllers: dict[str, Any],
     broadcaster: Broadcaster,
     dashboard: bytes,
 ):
@@ -156,6 +159,7 @@ def make_handler(
         {
             "store": store,
             "adapters": adapters,
+            "controllers": controllers,
             "broadcaster": broadcaster,
             "dashboard": dashboard,
         },
@@ -178,12 +182,14 @@ def serve(
     port: int = 8000,
     store: EventStore | None = None,
     adapters: dict[str, Any] | None = None,
+    controllers: dict[str, Any] | None = None,
     dashboard: str | Path | None = None,
 ) -> ThreadingHTTPServer:
     """Create and return a running ThreadingHTTPServer (call serve_forever)."""
     store = store or EventStore()
     adapters = adapters or {}
+    controllers = controllers or {}
     broadcaster = Broadcaster()
     store.on_append = broadcaster.publish
-    handler = make_handler(store, adapters, broadcaster, _load_dashboard(dashboard))
+    handler = make_handler(store, adapters, controllers, broadcaster, _load_dashboard(dashboard))
     return ThreadingHTTPServer((host, port), handler)

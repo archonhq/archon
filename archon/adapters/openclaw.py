@@ -79,15 +79,6 @@ class OpenClawAdapter:
                 if event is not None:
                     yield event
 
-    def control(self, action: str, target: str) -> dict:
-        """Control-plane stub — wired to OpenClaw's API in a later phase."""
-        if action not in {"killswitch", "start", "stop", "restart"}:
-            raise ValueError(f"unsupported action: {action}")
-        return make_event(
-            "control.result", request_id="stub", ok=False,
-            detail="control not wired to OpenClaw API yet",
-        )
-
     # -- internals ------------------------------------------------------
 
     @staticmethod

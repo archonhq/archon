@@ -20,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--sessions-dir", default=None, help="OpenClaw sessions dir to seed events from")
     serve.add_argument("--events-file", default=None, help="JSONL file to persist events")
+    serve.add_argument("--control-config", default=None, help="JSON file mapping target -> {action: command}")
     serve.add_argument("--interval", type=float, default=2.0, help="tailer poll interval (seconds)")
 
     args = parser.parse_args(argv)
@@ -41,7 +42,9 @@ def _tail(args) -> int:
 
 
 def _serve(args) -> int:
-    from .adapters import OpenClawAdapter
+    import json as _json
+
+    from .adapters import CommandAdapter, OpenClawAdapter
     from .server import serve
     from .store import EventStore
     from .tailer import Tailer
@@ -51,18 +54,28 @@ def _serve(args) -> int:
     if args.sessions_dir:
         adapters["openclaw"] = OpenClawAdapter(args.sessions_dir)
 
+    controllers = {}
+    if args.control_config:
+        with open(args.control_config, encoding="utf-8") as f:
+            cfg = _json.load(f)
+        controllers = {
+            prefix: CommandAdapter({prefix: cmds})
+            for prefix, cmds in cfg.items()
+        }
+
     # Seed the store from adapters (snapshot), then arm the tailer.
     for adapter in adapters.values():
         for event in adapter.iter_events():
             store.append(event)
 
-    srv = serve(host=args.host, port=args.port, store=store, adapters=adapters)
+    srv = serve(host=args.host, port=args.port, store=store,
+                adapters=adapters, controllers=controllers)
     tailer = Tailer(adapters, store, interval=args.interval) if adapters else None
     if tailer is not None:
         tailer.start()
 
     url = f"http://{args.host}:{args.port}"
-    print(f"Archon serving {url}  (events={store.count()}, adapters={sorted(adapters) or ['none']})",
+    print(f"Archon serving {url}  (events={store.count()}, adapters={sorted(adapters) or ['none']}, controllers={sorted(controllers) or ['none']})",
           file=sys.stderr)
     try:
         srv.serve_forever()

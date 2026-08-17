@@ -1,0 +1,11 @@
+{
+  "openclaw": {
+    "stop": "openclaw gateway stop",
+    "start": "openclaw gateway start",
+    "restart": "openclaw gateway restart"
+  },
+  "trading-monitor": {
+    "stop": "ssh root@your-vps systemctl stop autoclaw-monitor",
+    "start": "ssh root@your-vps systemctl start autoclaw-monitor"
+  }
+}
