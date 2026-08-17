@@ -1,6 +1,6 @@
 """OpenClaw adapter — reference implementation.
 
-Tails OpenClaw session JSONL files and emits Archon telemetry events.
+Reads OpenClaw session JSONL files and emits Archon telemetry events.
 
 Real record shape (OpenClaw `agents/<agent>/sessions/<id>.jsonl`):
     {"id": ..., "type": "message", "parentId": ..., "timestamp": ...,
@@ -8,8 +8,10 @@ Real record shape (OpenClaw `agents/<agent>/sessions/<id>.jsonl`):
 
 The session id is the filename stem, not a field in the record.
 
-Contract: every adapter exposes `iter_events()` yielding validated event
-dicts, and `control(action, target)` for control-plane operations.
+Two entry points:
+  - `iter_events()` -> full snapshot (seeds a store, then leaves a byte-offset
+    cursor so subsequent `poll()` calls only yield new lines)
+  - `poll()` -> new events since the last poll (byte-offset tailing)
 """
 
 from __future__ import annotations
@@ -31,31 +33,50 @@ class OpenClawAdapter:
     def __init__(self, sessions_dir: str | Path, agent: str = "main"):
         self.sessions_dir = Path(sessions_dir)
         self.agent = agent
+        self._offsets: dict[str, int] = {}  # path -> bytes consumed
 
     def _session_files(self) -> list[Path]:
         if not self.sessions_dir.is_dir():
             return []
-        files = [
+        return sorted(
             p for p in self.sessions_dir.glob("*.jsonl")
             if ".trajectory" not in p.name
-        ]
-        return sorted(files)
+        )
 
     def iter_events(self) -> Iterator[dict]:
-        """Yield validated events from all session JSONL files (tail-lite)."""
+        """Snapshot: emit all current events, then arm byte-offset cursors."""
         for path in self._session_files():
+            data = self._read_bytes(path, 0)
             session_id = path.stem
-            for line in self._tail(path):
-                try:
-                    raw = json.loads(line)
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    continue
-                event = self._translate(raw, session_id)
+            for line in data.splitlines():
+                event = self._line_event(line, session_id)
                 if event is not None:
-                    try:
-                        validate(event)
-                    except ValueError:
-                        continue
+                    yield event
+            self._offsets[str(path)] = len(data)
+
+    def poll(self) -> Iterator[dict]:
+        """Emit only events appended since the last call (byte-offset tail)."""
+        for path in self._session_files():
+            key = str(path)
+            offset = self._offsets.get(key, 0)
+            size = path.stat().st_size if path.exists() else 0
+            if size < offset:
+                offset = 0  # truncated / rotated
+            if size == offset:
+                continue
+            data = self._read_bytes(path, offset)
+            if not data:
+                continue
+            # advance only through the last complete line (keep partial tail)
+            newline = data.rfind(b"\n")
+            if newline == -1:
+                continue
+            complete = data[: newline + 1]
+            self._offsets[key] = offset + len(complete)
+            session_id = path.stem
+            for line in complete.decode("utf-8", "replace").splitlines():
+                event = self._line_event(line, session_id)
+                if event is not None:
                     yield event
 
     def control(self, action: str, target: str) -> dict:
@@ -70,13 +91,27 @@ class OpenClawAdapter:
     # -- internals ------------------------------------------------------
 
     @staticmethod
-    def _tail(path: Path, max_lines: int = 20_000) -> list[str]:
-        """Read the last max_lines lines (crash-safe; no file lock needed)."""
+    def _read_bytes(path: Path, offset: int) -> bytes:
         try:
-            data = path.read_text(encoding="utf-8", errors="replace")
+            with path.open("rb") as f:
+                f.seek(offset)
+                return f.read()
         except OSError:
-            return []
-        return data.splitlines()[-max_lines:]
+            return b""
+
+    def _line_event(self, line: str, session_id: str) -> dict | None:
+        try:
+            raw = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        event = self._translate(raw, session_id)
+        if event is None:
+            return None
+        try:
+            validate(event)
+        except ValueError:
+            return None
+        return event
 
     def _translate(self, raw: dict, session_id: str) -> dict | None:
         etype = _SESSION_EVENT.get(raw.get("type", ""))

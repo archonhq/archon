@@ -1,6 +1,7 @@
 """Tests for the Archon HTTP server (stdlib, no framework)."""
 
 import json
+import http.client
 import threading
 import urllib.error
 import urllib.request
@@ -84,3 +85,24 @@ def test_dashboard_served(client):
     with urllib.request.urlopen(base + "/", timeout=5) as r:
         body = r.read().decode()
     assert "Archon" in body
+
+
+def test_sse_stream(client):
+    base, store = client
+    port = int(base.rsplit(":", 1)[1])
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    conn.request("GET", "/api/events/stream")
+    resp = conn.getresponse()
+    assert resp.status == 200
+    assert resp.getheader("Content-Type") == "text/event-stream"
+
+    # publish an event via the ingest endpoint
+    _post(base, "/api/events", make_event("service.health", service="sse", state="up"))
+
+    # socket timeout already set at connect; readline returns on data
+    line = resp.fp.readline()
+    assert line.startswith(b"data:")
+    payload = json.loads(line[len(b"data:"):].strip())
+    assert payload["type"] == "service.health"
+    assert payload["service"] == "sse"
+    conn.close()

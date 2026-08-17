@@ -20,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--sessions-dir", default=None, help="OpenClaw sessions dir to seed events from")
     serve.add_argument("--events-file", default=None, help="JSONL file to persist events")
+    serve.add_argument("--interval", type=float, default=2.0, help="tailer poll interval (seconds)")
 
     args = parser.parse_args(argv)
 
@@ -43,18 +44,23 @@ def _serve(args) -> int:
     from .adapters import OpenClawAdapter
     from .server import serve
     from .store import EventStore
+    from .tailer import Tailer
 
     store = EventStore(path=args.events_file)
     adapters = {}
     if args.sessions_dir:
         adapters["openclaw"] = OpenClawAdapter(args.sessions_dir)
 
-    # Seed the store from adapters (best-effort, tail-lite).
+    # Seed the store from adapters (snapshot), then arm the tailer.
     for adapter in adapters.values():
         for event in adapter.iter_events():
             store.append(event)
 
     srv = serve(host=args.host, port=args.port, store=store, adapters=adapters)
+    tailer = Tailer(adapters, store, interval=args.interval) if adapters else None
+    if tailer is not None:
+        tailer.start()
+
     url = f"http://{args.host}:{args.port}"
     print(f"Archon serving {url}  (events={store.count()}, adapters={sorted(adapters) or ['none']})",
           file=sys.stderr)
@@ -63,6 +69,8 @@ def _serve(args) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        if tailer is not None:
+            tailer.stop()
         srv.server_close()
     return 0
 

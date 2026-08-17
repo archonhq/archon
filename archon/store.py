@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 class EventStore:
@@ -13,9 +13,15 @@ class EventStore:
     path is given, persists every event as one JSON line (crash-safe append).
     """
 
-    def __init__(self, path: str | Path | None = None, max_mem: int = 10_000):
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        max_mem: int = 10_000,
+        on_append: "Callable[[dict], None] | None" = None,
+    ):
         self.max_mem = max_mem
         self.path = Path(path) if path else None
+        self.on_append = on_append
         self._events: deque[dict[str, Any]] = deque(maxlen=max_mem)
         if self.path is not None and self.path.exists():
             self._load()
@@ -39,6 +45,8 @@ class EventStore:
             with self.path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(event, separators=(",", ":"), sort_keys=True))
                 f.write("\n")
+        if self.on_append is not None:
+            self.on_append(event)
         return event
 
     def recent(self, limit: int = 100) -> list[dict[str, Any]]:

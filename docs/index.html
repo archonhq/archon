@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archon — the control room for your AI agent fleet</title>
+<meta name="description" content="See what your AI agents are doing, and stop them when they're not. Local-first, zero-dependency control plane for OpenClaw, Claude Code, CrewAI, Make, and custom bots.">
+<style>
+  :root {
+    --bg: #0b0f1c; --panel: #141a2e; --edge: #26304f;
+    --text: #e8edf8; --muted: #8b96b5; --accent: #4fd1c5;
+    --accent2: #7f8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--text); background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+    background-image: radial-gradient(1200px 600px at 80% -10%, #1a2440 0%, transparent 60%);
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  header { padding: 28px 0 60px; }
+  nav { display: flex; align-items: center; gap: 22px; padding: 18px 0; }
+  nav .logo { font-weight: 800; font-size: 20px; letter-spacing: .5px; }
+  nav .logo span { color: var(--accent); }
+  nav a { color: var(--muted); text-decoration: none; margin-left: 18px; font-size: 14px; }
+  nav a:hover { color: var(--text); }
+  .hero h1 { font-size: 44px; line-height: 1.15; margin: 10px 0 18px; letter-spacing: -.5px; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p.sub { font-size: 19px; color: var(--muted); max-width: 620px; }
+  .cta { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 20px; border-radius: 9px; font-weight: 600;
+    text-decoration: none; font-size: 15px;
+  }
+  .btn.primary { background: var(--accent); color: #06211e; }
+  .btn.ghost { border: 1px solid var(--edge); color: var(--text); }
+  pre {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 10px;
+    padding: 16px 18px; overflow-x: auto; font-size: 14px;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  pre .c { color: var(--muted); }
+  section { padding: 34px 0; }
+  h2 { font-size: 26px; margin-bottom: 22px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 12px;
+    padding: 20px; box-shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 8px 20px rgba(0,0,0,.3);
+  }
+  .card h3 { margin: 0 0 8px; font-size: 17px; }
+  .card h3 .ic { color: var(--accent); margin-right: 6px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--edge); }
+  th { color: var(--muted); font-weight: 600; }
+  td.done { color: var(--accent); }
+  td.todo { color: var(--muted); }
+  footer { border-top: 1px solid var(--edge); margin-top: 50px; padding: 26px 0 50px; color: var(--muted); font-size: 13px; }
+  code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--accent2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="logo">Archon<span>·</span></div>
+    <a href="#features">Features</a>
+    <a href="#quickstart">Quickstart</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="https://github.com/archonhq/archon" style="margin-left:auto">GitHub ↗</a>
+  </nav>
+
+  <header class="hero">
+    <h1>The control room for your <em>AI agent fleet</em>.<br>See what they're doing. Stop them when they're not.</h1>
+    <p class="sub">Archon is a local-first control plane for people running multiple AI agents and automations. Most tools only <em>watch</em> your agents — Archon also <em>controls</em> them.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/archonhq/archon">Star on GitHub</a>
+      <a class="btn ghost" href="#quickstart">Self-host it</a>
+    </div>
+  </header>
+
+  <section id="features">
+    <h2>Why Archon</h2>
+    <div class="grid">
+      <div class="card"><h3><span class="ic">👁</span>See</h3><p>Every agent session, automation, and service on one pane — live, via SSE, not 10-second polling.</p></div>
+      <div class="card"><h3><span class="ic">⚡</span>Control</h3><p>Kill switches, start/stop automations, restart services. The part nobody else ships.</p></div>
+      <div class="card"><h3><span class="ic">🔔</span>Alert</h3><p>Telegram, webhook, or email when an agent errors or an automation stalls.</p></div>
+      <div class="card"><h3><span class="ic">🪶</span>Zero deps</h3><p>A stdlib Python server and one HTML file. No Node, no Docker required — but a Docker image ships too.</p></div>
+    </div>
+  </section>
+
+  <section id="quickstart">
+    <h2>Quickstart</h2>
+    <pre><span class="c"># clone and run — no build step, no dependencies</span>
+git clone https://github.com/archonhq/archon.git
+cd archon
+python -m archon.cli serve --sessions-dir ~/.openclaw-autoclaw/agents/main/sessions
+
+<span class="c"># then open</span>
+http://127.0.0.1:8000</pre>
+    <p style="color:var(--muted); font-size:14px">The dashboard is served locally. Nothing leaves your machine — events never touch a third-party server.</p>
+  </section>
+
+  <section id="architecture">
+    <h2>One contract, many frameworks</h2>
+    <pre><span class="c">framework logs ──► adapter ──► telemetry events ──► dashboard (HTTP/SSE)
+                                        ▲
+                                   control API
+                                        │
+framework APIs ◄─────── executor ◄──────┘</span></pre>
+    <p style="color:var(--muted); font-size:14px">Adapters translate each framework into one JSON event stream (<a href="docs/telemetry-contract.md" style="color:var(--accent)">the contract</a>). The dashboard and control API consume only that — so a new framework is one adapter away. OpenClaw ships today; Claude Code, CrewAI, n8n, and Make are on the roadmap.</p>
+  </section>
+
+  <section id="roadmap">
+    <h2>Roadmap</h2>
+    <table>
+      <tr><th>Phase</th><th>Scope</th><th>Status</th></tr>
+      <tr><td>0</td><td>Telemetry contract, adapters, packaging</td><td class="done">✓ shipped</td></tr>
+      <tr><td>0.5</td><td><code>archon serve</code>, dashboard, event store</td><td class="done">✓ shipped</td></tr>
+      <tr><td>1</td><td>Live tailing (SSE), landing page, first self-host users</td><td class="done">✓ now</td></tr>
+      <tr><td>2</td><td>Hosted tier — ingest API, multi-tenant, billing</td><td class="todo">planned</td></tr>
+      <tr><td>3</td><td>Trading edition — executor, kill switch, pager</td><td class="todo">planned</td></tr>
+    </table>
+  </section>
+
+  <footer>
+    Archon — MIT licensed. Built for people who run agents they can't always watch. <a href="https://github.com/archonhq/archon" style="color:var(--accent)">github.com/archonhq/archon</a>
+  </footer>
+</div>
+</body>
+</html>

@@ -128,14 +128,28 @@
       return;
     }
     for (const e of events.slice().reverse()) {
-      const row = document.createElement('div');
-      row.className = 'feed-row';
-      const t = document.createElement('span'); t.className = 't'; t.textContent = e.ts.slice(11,19);
-      const ty = document.createElement('span'); ty.className = 'type'; ty.textContent = e.type;
-      const m = document.createElement('span'); m.className = 'msg'; m.textContent = detail(e);
-      row.append(t, ty, m);
-      feed.appendChild(row);
+      feed.appendChild(rowFor(e));
     }
+  }
+
+  function rowFor(e) {
+    const row = document.createElement('div');
+    row.className = 'feed-row';
+    const t = document.createElement('span'); t.className = 't'; t.textContent = e.ts.slice(11,19);
+    const ty = document.createElement('span'); ty.className = 'type'; ty.textContent = e.type;
+    const m = document.createElement('span'); m.className = 'msg'; m.textContent = detail(e);
+    row.append(t, ty, m);
+    return row;
+  }
+
+  function appendOne(e) {
+    const feed = $('feed');
+    if (feed.firstChild && feed.firstChild.classList && feed.firstChild.classList.contains('empty'))
+      feed.innerHTML = '';
+    feed.prepend(rowFor(e));
+    while (feed.children.length > 120) feed.removeChild(feed.lastChild);
+    $('count').textContent = String(parseInt($('count').textContent || '0', 10) + 1);
+    $('status').textContent = 'live · ' + new Date().toLocaleTimeString();
   }
 
   function detail(e) {
@@ -160,11 +174,31 @@
     setTimeout(refresh, 300);
   }
 
+  function markOnline() {
+    $('conn').textContent = 'live';
+    $('conn').parentElement.querySelector('.dot').className = 'dot up';
+  }
+
+  function startStream() {
+    if (!window.EventSource) { startPolling(); return; }
+    const es = new EventSource('/api/events/stream');
+    es.onmessage = (e) => { try { appendOne(JSON.parse(e.data)); markOnline(); } catch (_) {} };
+    es.onopen = markOnline;
+    es.onerror = () => { es.close(); startPolling(); };
+    window._es = es;
+  }
+
+  function startPolling() {
+    $('conn').textContent = 'polling';
+    $('conn').parentElement.querySelector('.dot').className = 'dot up';
+    setInterval(refresh, 3000);
+  }
+
   document.querySelectorAll('button[data-action]').forEach(b =>
     b.addEventListener('click', () => control(b.dataset.action, b.dataset.target)));
 
   refresh();
-  setInterval(refresh, 3000);
+  startStream();
 </script>
 </body>
 </html>

@@ -1,21 +1,24 @@
 """Archon HTTP server — stdlib-only (zero dependencies).
 
 Routes:
-  GET  /                -> dashboard (single-file HTML)
-  GET  /api/events      -> recent events (JSON), ?limit= & ?since=ISO
-  GET  /api/health      -> {status, events, adapters}
-  POST /api/events      -> ingest one validated event
-  POST /api/control     -> {action, target, by} -> routed to matching adapter
+  GET  /                       -> dashboard (single-file HTML)
+  GET  /api/events             -> recent events (JSON), ?limit= & ?since=ISO
+  GET  /api/events/stream      -> SSE live stream of new events
+  GET  /api/health             -> {status, events, adapters}
+  POST /api/events             -> ingest one validated event
+  POST /api/control            -> {action, target, by} -> routed to matching adapter
 """
 
 from __future__ import annotations
 
 import json
+import queue
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from .broadcast import Broadcaster
 from .events import validate
 from .store import EventStore
 
@@ -28,10 +31,11 @@ _DEFAULT_DASHBOARD = (
 
 
 class ArchonHandler(BaseHTTPRequestHandler):
-    """Handler bound to a store + adapters + dashboard bytes via factory."""
+    """Handler bound to a store + adapters + broadcaster + dashboard bytes."""
 
     store: EventStore
     adapters: dict[str, Any]
+    broadcaster: Broadcaster
     dashboard: bytes
 
     def log_message(self, *args: Any) -> None:  # silence default logging
@@ -61,6 +65,8 @@ class ArchonHandler(BaseHTTPRequestHandler):
             since = q.get("since", [None])[0]
             events = self.store.since(since, limit) if since else self.store.recent(limit)
             self._json({"events": events, "count": self.store.count()})
+        elif url.path == "/api/events/stream":
+            self._sse_stream()
         elif url.path == "/api/health":
             self._json({
                 "status": "ok",
@@ -98,12 +104,10 @@ class ArchonHandler(BaseHTTPRequestHandler):
         if action not in CONTROL_ACTIONS:
             return self._json({"error": f"unsupported action: {action}"}, 400)
 
-        adapter = None
-        prefix = str(target).split(":", 1)[0]
-        adapter = self.adapters.get(prefix)
+        adapter = self.adapters.get(str(target).split(":", 1)[0])
 
         if adapter is None:
-            result = {"ok": False, "detail": f"no adapter for {prefix!r}"}
+            result = {"ok": False, "detail": f"no adapter for {str(target).split(':', 1)[0]!r}"}
         else:
             result = adapter.control(action, target)
 
@@ -114,12 +118,47 @@ class ArchonHandler(BaseHTTPRequestHandler):
         self.store.append(result)
         self._json(result)
 
+    # -- SSE -------------------------------------------------------------
 
-def make_handler(store: EventStore, adapters: dict[str, Any], dashboard: bytes):
+    def _sse_stream(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        q = self.broadcaster.subscribe()
+        try:
+            while True:
+                try:
+                    event = q.get(timeout=15)
+                except queue.Empty:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    continue
+                data = json.dumps(event, separators=(",", ":"))
+                self.wfile.write(f"data: {data}\n\n".encode())
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            self.broadcaster.unsubscribe(q)
+
+
+def make_handler(
+    store: EventStore,
+    adapters: dict[str, Any],
+    broadcaster: Broadcaster,
+    dashboard: bytes,
+):
     return type(
         "BoundArchonHandler",
         (ArchonHandler,),
-        {"store": store, "adapters": adapters, "dashboard": dashboard},
+        {
+            "store": store,
+            "adapters": adapters,
+            "broadcaster": broadcaster,
+            "dashboard": dashboard,
+        },
     )
 
 
@@ -144,6 +183,7 @@ def serve(
     """Create and return a running ThreadingHTTPServer (call serve_forever)."""
     store = store or EventStore()
     adapters = adapters or {}
-    handler = make_handler(store, adapters, _load_dashboard(dashboard))
-    srv = ThreadingHTTPServer((host, port), handler)
-    return srv
+    broadcaster = Broadcaster()
+    store.on_append = broadcaster.publish
+    handler = make_handler(store, adapters, broadcaster, _load_dashboard(dashboard))
+    return ThreadingHTTPServer((host, port), handler)
