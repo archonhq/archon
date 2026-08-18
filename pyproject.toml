@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "archon"
+name = "archon-hq"
 version = "0.1.0"
 description = "The control room for your AI agent fleet — see what your agents are doing, and stop them when they're not."
 readme = "README.md"
@@ -21,3 +21,6 @@ archon = "archon.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["archon*"]
+
+[tool.setuptools.package-data]
+archon = ["dashboard.html"]

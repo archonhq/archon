@@ -22,12 +22,13 @@ into a single event stream, streams it live to one dashboard, and — critically
 ## Quick start
 
 ```bash
-git clone https://github.com/archonhq/archon && cd archon
-pip install .
+pip install archon-hq
 archon serve --sessions-dir ~/.openclaw-autoclaw/agents/main/sessions \
              --control-config examples/control-config.json
 # open http://127.0.0.1:8000
 ```
+
+From source: `git clone https://github.com/archonhq/archon && cd archon && pip install .`
 
 ![Archon dashboard](docs/demo.gif)
 
