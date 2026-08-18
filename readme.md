@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/archonhq/archon/main/assets/archon-logo-transparent-512.png" alt="Archon logo" width="96" />
+</p>
+
 # Archon
 
 **The control room for your AI agent fleet.**
